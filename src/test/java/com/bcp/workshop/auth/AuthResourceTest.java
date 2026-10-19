@@ -26,6 +26,7 @@ import static org.hamcrest.Matchers.notNullValue;
 @TestProfile(AuthResourceTest.IsolatedDatabase.class)
 class AuthResourceTest {
     private static final String STUDENT_PASSWORD = "Workshop123!";
+    private static final String LONG_PASSWORD = "LongPassword!".repeat(320);
     private static final Path DATABASE_PATH = Path.of("target", "qa-http-" + ProcessHandle.current().pid() + ".db");
 
     public static class IsolatedDatabase implements QuarkusTestProfile {
@@ -55,6 +56,14 @@ class AuthResourceTest {
             statement.setString(1, "qa'quoted");
             statement.setString(2, new PasswordHasher().hash("TestPassword!"));
             statement.setString(3, "Quoted User");
+            statement.executeUpdate();
+            statement.setString(1, "long-user");
+            statement.setString(2, new PasswordHasher().hash(LONG_PASSWORD));
+            statement.setString(3, "Long Password User");
+            statement.executeUpdate();
+            statement.setString(1, "corrupt-hash-user");
+            statement.setString(2, "invalid-hash");
+            statement.setString(3, "Corrupt Hash User");
             statement.executeUpdate();
         }
     }
@@ -110,11 +119,58 @@ class AuthResourceTest {
     }
 
     @Test
+    void acceptsNullAndEmptyClient() {
+        Map<String, Object> request = new HashMap<>();
+        request.put("username", "student");
+        request.put("password", STUDENT_PASSWORD);
+        request.put("client", null);
+        given().contentType("application/json").accept("application/json").body(request)
+                .when().post("/auth/login").then().statusCode(200).body("user.username", is("student"));
+        request.put("client", "");
+        given().contentType("application/json").accept("application/json").body(request)
+                .when().post("/auth/login").then().statusCode(200).body("user.username", is("student"));
+    }
+
+    @Test
+    void preservesUsernameCaseAndLongPasswords() {
+        assertRejected("Student", STUDENT_PASSWORD);
+        assertSuccessfulLogin("long-user", LONG_PASSWORD, "Long Password User", "STUDENT");
+        assertRejected("long-user", LONG_PASSWORD.substring(0, LONG_PASSWORD.length() - 1));
+    }
+
+    @Test
+    void rejectsMalformedStoredHashOverHttp() {
+        assertRejected("corrupt-hash-user", "TestPassword!");
+    }
+
+    @Test
+    void queryFailureReturnsTheDocumented401OverHttp() throws Exception {
+        try (var connection = DriverManager.getConnection(ConfigProvider.getConfig().getValue("auth.database.url", String.class));
+             var statement = connection.createStatement()) {
+            statement.executeUpdate("ALTER TABLE legacy_users RENAME TO qa_unavailable_users");
+            try {
+                assertRejected("student", STUDENT_PASSWORD);
+            } finally {
+                statement.executeUpdate("ALTER TABLE qa_unavailable_users RENAME TO legacy_users");
+            }
+        }
+        assertSuccessfulLogin("student", STUDENT_PASSWORD, "Workshop Student", "STUDENT");
+    }
+
+    @Test
     void preservesNullRequestResponse() {
         try (var response = new AuthResource().login(null)) {
             assertEquals(400, response.getStatus());
             assertEquals(Map.of("message", "Request is null"), response.getEntity());
         }
+    }
+
+    @Test
+    void jsonNullRequestReturnsTheDocumented400OverHttp() {
+        Map<String, Object> body = given().contentType("application/json").accept("application/json").body("null")
+                .when().post("/auth/login").then().statusCode(400).contentType("application/json")
+                .extract().jsonPath().getMap("");
+        assertEquals(Map.of("message", "Request is null"), body);
     }
 
     @Test
@@ -168,13 +224,17 @@ class AuthResourceTest {
     }
 
     private void assertRejected(String username, String password) {
-        given().contentType("application/json").body(Map.of("username", username, "password", password))
-                .when().post("/auth/login").then().statusCode(401)
-                .body("message", is("Invalid user " + username + " or password"));
+        Map<String, Object> body = given().contentType("application/json")
+            .body(Map.of("username", username, "password", password))
+            .when().post("/auth/login").then().statusCode(401).contentType("application/json")
+            .extract().jsonPath().getMap("");
+        assertEquals(Map.of("message", "Invalid user " + username + " or password"), body);
     }
 
     private void assertValidation(Map<String, ?> request, String message) {
-        given().contentType("application/json").body(request)
-                .when().post("/auth/login").then().statusCode(400).body("message", is(message));
+        Map<String, Object> body = given().contentType("application/json").body(request)
+            .when().post("/auth/login").then().statusCode(400).contentType("application/json")
+            .extract().jsonPath().getMap("");
+        assertEquals(Map.of("message", message), body);
     }
 }
