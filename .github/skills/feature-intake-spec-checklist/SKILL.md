@@ -13,7 +13,7 @@ description: Estandariza la definición de funcionalidades antes de la implement
 - **When to use:** Antes de crear tareas de implementación o abrir un PR significativo.
 - **When NOT to use:** Incidentes P1 de producción, cambios triviales como typos o tareas sin impacto funcional.
 - **Sensitive inputs:** No incluyas datos reales de clientes, credenciales, secretos, tokens ni URLs internas no autorizadas.
-- **Expected output:** Markdown estructurado mediante la sección Output a continuación.
+- **Expected output:** Markdown estructurado mediante la sección Output a continuación y exportable como documento independiente pdf.
 
 ## 2) Inputs
 Proporciona la información en este formato:
@@ -32,24 +32,24 @@ Devuelve **solo** un documento Markdown con estas secciones y bullets:
 
 1. **Summary**
 2. **Scope**
-	- Dentro del alcance
-	- Fuera del alcance
+    - Dentro del alcance
+    - Fuera del alcance
 3. **Supuestos**
 4. **Decisiones técnicas por tomar (pendientes o resueltas)**
 5. **Riesgos y mitigaciones**
 6. **Criterios de aceptación (medibles)**
 7. **Plan de validación**
-	- Pruebas unitarias
-	- Pruebas funcionales
-	- Seguridad (comprobaciones mínimas)
-	- Evidencia requerida (qué adjuntar)
+    - Pruebas unitarias
+    - Pruebas funcionales
+    - Seguridad (comprobaciones mínimas)
+    - Evidencia requerida (qué adjuntar)
 8. **Tareas sugeridas por rol**
-	- Chapter/PO
-	- Tech Lead
-	- Backend
-	- Frontend
-	- QA
-	- Cyber
+    - Chapter/PO
+    - Tech Lead
+    - Backend
+    - Frontend
+    - QA
+    - Cyber
 9. **Preguntas abiertas**
 
 ## 4) Constraints
