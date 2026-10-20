@@ -13,7 +13,7 @@ description: Estandariza la definición de funcionalidades antes de la implement
 - **When to use:** Antes de crear tareas de implementación o abrir un PR significativo.
 - **When NOT to use:** Incidentes P1 de producción, cambios triviales como typos o tareas sin impacto funcional.
 - **Sensitive inputs:** No incluyas datos reales de clientes, credenciales, secretos, tokens ni URLs internas no autorizadas.
-- **Expected output:** Markdown estructurado mediante la sección Output a continuación y exportable como documento independiente pdf.
+- **Expected output:** Markdown estructurado mediante la sección Output a continuación.
 
 ## 2) Inputs
 Proporciona la información en este formato:
