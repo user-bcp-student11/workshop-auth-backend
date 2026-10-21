@@ -41,10 +41,11 @@ class UserRepositoryTest {
         var repository = new UserRepository(database);
         assertNull(repository.findByUsername("student"));
         var resource = new AuthResource();
-        resource.authentication = new AuthenticationService(repository);
+        resource.authentication = authenticationService(repository);
         var request = new LoginRequest();
         request.username = "student";
         request.password = "incorrect";
+        request.client = "test-client";
         try (var response = resource.login(request)) {
             assertEquals(401, response.getStatus());
         }
@@ -56,6 +57,11 @@ class UserRepositoryTest {
         assertEquals("student", repository.findByUsername("student").user().username());
         assertNull(repository.findByUsername("missing-user"));
         assertNull(repository.findByUsername("student' --"));
-        assertNull(new AuthenticationService(repository).authenticate("missing-user", "incorrect"));
+        assertNull(authenticationService(repository).authenticate("missing-user", "incorrect", "test-client"));
+    }
+
+    private AuthenticationService authenticationService(UserRepository repository) {
+        return new AuthenticationService(repository, new PasswordHasher(),
+                (username, role, client) -> "qa-token-fixture");
     }
 }

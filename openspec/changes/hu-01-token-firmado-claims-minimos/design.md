@@ -11,6 +11,8 @@ Estado tecnico actual relevante:
 - `LoginResponse` fija `expiresIn = 3600` y devuelve `token`, `expiresIn`, `user`, `debug`.
 - `LoginRequest` ya expone `client`, pero hoy no participa en autenticacion/emision.
 
+El contexto del Issue #12 que menciona HMAC y `AUTH_TOKEN_SECRET` describe el objetivo del cambio, no el baseline del repositorio. El baseline comprobado es el emisor Base64 legado descrito arriba; los criterios aprobados del issue se mantienen.
+
 Restricciones de contrato baseline (Dia 1):
 - Se preserva `POST /auth/login` y la semantica general de autenticacion.
 - Se preservan los estados HTTP documentados para validacion/autenticacion fallida.
@@ -66,25 +68,28 @@ Restricciones de contrato baseline (Dia 1):
 ## Decisiones tecnicas y alternativas consideradas
 
 ### D1. Migrar de token legado Base64 a token firmado con claims minimos
-- **Decision:** emitir token firmado con claims `sub`, `client`, `iat`, `exp`, manteniendo `expiresIn` en respuesta.
+- **Decision:** emitir un JWT firmado con HMAC-SHA256 mediante `com.auth0:java-jwt`; incluir `sub`, `client`, `iat` y `exp`, manteniendo `expiresIn` en respuesta.
 - **Rationale:** cumple requerimientos de integridad y expiracion observable sin romper el endpoint.
 - **Alternativas:**
   - Mantener Base64 legado agregando campos: rechazado, no aporta firma ni integridad.
   - Cambiar inmediatamente todo el contrato de respuesta: rechazado por riesgo de ruptura de clientes.
+  - Implementar manualmente la serializacion y firma JWT: rechazado para evitar criptografia/tokenizacion propia.
 
 ### D2. Uso de `client` como dato contractual y no decorativo
-- **Decision:** `client` deja de ser ignorado; se valida con reglas explicitas y se incorpora al claim.
+- **Decision:** `client` es obligatorio como string no blanco; su valor original se incorpora al claim sin normalizarlo. Esta es la decision PO registrada en la tarea 2.3.
 - **Rationale:** evita ambiguedad de emision y permite trazabilidad por consumidor.
 - **Alternativas:**
-  - Seguir aceptando `client` null/vacio: rechazado, contradice HU-01.
+  - Seguir aceptando `client` ausente, null, vacio o blanco: rechazado por la decision PO de HU-01.
   - Remover `client` del request: rechazado, rompe DTO/cliente actual sin necesidad.
 
+La validacion ocurre despues de `username` y `password`, preservando la precedencia existente de errores de entrada.
+
 ### D3. Fuente de secreto de firma via configuracion
-- **Decision:** priorizar `AUTH_TOKEN_SECRET` de configuracion; no depender de secreto hardcodeado en produccion.
+- **Decision:** leer `AUTH_TOKEN_SECRET` mediante configuracion obligatoria, sin valor por defecto ni fallback silencioso en ningun perfil de ejecucion normal. Los tests inyectan un secreto ficticio solo en su perfil aislado.
 - **Rationale:** evita exposicion y facilita rotacion/segregacion por entorno.
 - **Alternativas:**
   - Mantener secreto fijo en codigo: rechazado por riesgo de seguridad.
-  - Permitir fallback inseguro silencioso en cualquier entorno: rechazado; solo aceptable si queda explicitamente restringido a laboratorio/sandbox.
+  - Permitir fallback inseguro silencioso: rechazado.
 
 ### D4. Preservar respuesta de negocio y endurecer observabilidad
 - **Decision:** mantener contrato de errores y shape de salida, pero redaccion de logs sin token completo ni secreto.
@@ -92,6 +97,11 @@ Restricciones de contrato baseline (Dia 1):
 - **Alternativas:**
   - Eliminar campo `debug` ahora: diferido, no requerido por HU-01 y potencialmente rompedor.
   - Cambiar 401/500 existentes en esta HU: rechazado por fuera de alcance.
+
+### D5. Coherencia temporal con precision de segundos
+- **Decision:** `iat` y `exp` son epoch seconds; `exp = iat + expiresIn`, y la respuesta conserva `expiresIn = 3600`. La diferencia contra el reloj al observar la respuesta admite como maximo un segundo de redondeo.
+- **Rationale:** evita que el tiempo de ejecucion de una prueba o del procesamiento HTTP altere la relacion determinista entre los claims y `expiresIn`.
+- **Alternativas:** calcular el tiempo de vida con instantes de precision subsegundo al serializar: rechazado porque los claims JWT se expresan en segundos y el resultado introduciria flakiness.
 
 ## Estrategia incremental
 
@@ -151,8 +161,4 @@ El rollback aplica solo a este endpoint y no requiere cambios de esquema de dato
 
 ## Open Questions
 
-- ¿La regla final de `client` sera "requerido no vacio" o un conjunto permitido de identificadores?  
-  Esta definicion debe cerrarse antes de implementar porque cambia criterios de aceptacion 400/200.
-
-- ¿Se mantiene `debug` sin cambios o se versiona su semantica al adoptar token firmado?  
-  Puede mantenerse por compatibilidad en HU-01, pero conviene decision explicita para evitar ambiguedad en consumidores.
+No quedan decisiones abiertas que bloqueen esta implementacion. La regla de `client` y la preservacion de `debug` quedan cerradas por las decisiones PO reflejadas en las tareas 2.3 y 2.4.

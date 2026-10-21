@@ -68,8 +68,8 @@ class LegacyDatabaseTest {
             assertEquals("Personal Student", result.getString("display_name"));
             assertEquals("CUSTOM_ROLE", result.getString("role"));
         }
-        assertNotNull(new AuthenticationService(new UserRepository(database)).authenticate("student", "PersonalPassword!"));
-        assertNull(new AuthenticationService(new UserRepository(database)).authenticate("student", "Workshop123!"));
+        assertNotNull(authenticationService().authenticate("student", "PersonalPassword!", "test-client"));
+        assertNull(authenticationService().authenticate("student", "Workshop123!", "test-client"));
     }
 
     @Test
@@ -77,9 +77,9 @@ class LegacyDatabaseTest {
         String password = "\u00e1\u6f22\ud83d\udd12" + "long-password".repeat(40);
         createLegacyFixture(password);
         database.initialize();
-        var authentication = new AuthenticationService(new UserRepository(database));
-        assertNotNull(authentication.authenticate("student", password));
-        assertNull(authentication.authenticate("student", password + " "));
+        var authentication = authenticationService();
+        assertNotNull(authentication.authenticate("student", password, "test-client"));
+        assertNull(authentication.authenticate("student", password + " ", "test-client"));
     }
 
     @Test
@@ -113,7 +113,7 @@ class LegacyDatabaseTest {
             assertTrue(result.next());
             assertEquals("PersonalPassword!", result.getString(1));
         }
-        assertTrue(new AuthenticationService(new UserRepository(database)).authenticate("student", "PersonalPassword!") == null,
+        assertTrue(authenticationService().authenticate("student", "PersonalPassword!", "test-client") == null,
             "A failed migration must not enable plaintext authentication");
     }
 
@@ -124,7 +124,7 @@ class LegacyDatabaseTest {
             statement.execute("PRAGMA journal_mode = WAL");
         }
         database.initialize();
-        assertNotNull(new AuthenticationService(new UserRepository(database)).authenticate("student", "PlaintextStorageMarker!"));
+        assertNotNull(authenticationService().authenticate("student", "PlaintextStorageMarker!", "test-client"));
         try (var paths = Files.list(directory)) {
             for (Path file : paths.toList()) {
                 String contents = new String(Files.readAllBytes(file), java.nio.charset.StandardCharsets.ISO_8859_1);
@@ -168,7 +168,12 @@ class LegacyDatabaseTest {
             statement.setString(2, "student");
             statement.executeUpdate();
         }
-        assertNull(new AuthenticationService(new UserRepository(database)).authenticate("student", "Workshop123!"));
+        assertNull(authenticationService().authenticate("student", "Workshop123!", "test-client"));
+    }
+
+    private AuthenticationService authenticationService() {
+        return new AuthenticationService(new UserRepository(database), new PasswordHasher(),
+                (username, role, client) -> "qa-token-fixture");
     }
 
     private String readHash() throws Exception {

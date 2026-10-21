@@ -31,7 +31,7 @@ Content-Type identifica el cuerpo JSON. Accept solicita la representacion dispon
 |---|---|---|---|
 | username | string JSON | Si | Nombre de cuenta. Ausencia, null, cadena vacia o en blanco se rechazan. Se busca la cadena original, sin recortar espacios ni normalizar mayusculas. |
 | password | string JSON | Si | Contrasena original, no su hash. Ausencia, null, cadena vacia o en blanco se rechazan. No se recorta antes de verificarla. |
-| client | string JSON o null | No | Identificador admitido por el DTO, pero ignorado en la autenticacion. Puede omitirse. |
+| client | string JSON | Si | Identificador no blanco del cliente. Ausencia, null, vacio o solo espacios se rechazan. El valor recibido se conserva sin recortar para el claim del token. |
 
 Ejemplo completo, con todos los campos declarados:
 
@@ -43,9 +43,9 @@ Ejemplo completo, con todos los campos declarados:
 }
 ```
 
-La validacion sigue el orden cuerpo, username, password. `trim().isEmpty()` solo detecta campos en blanco; no cambia los valores usados al autenticar. Las propiedades JSON desconocidas se ignoran. El resource no fija longitudes maximas. La conversion de tipos JSON distintos de string no esta caracterizada y no debe usarse como contrato.
+La validacion sigue el orden cuerpo, username, password, client. `trim().isEmpty()` solo detecta campos en blanco; no cambia los valores aceptados. Las propiedades JSON desconocidas se ignoran. El resource no fija longitudes maximas. La conversion de tipos JSON distintos de string no esta caracterizada y no debe usarse como contrato.
 
-Evidencia: [LoginRequest.java:3](../src/main/java/com/bcp/workshop/auth/LoginRequest.java#L3), [AuthResource.java:23](../src/main/java/com/bcp/workshop/auth/AuthResource.java#L23), [application.properties:8](../src/main/resources/application.properties#L8), [AuthResourceTest.java:90](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java#L90).
+Evidencia: [LoginRequest.java](../src/main/java/com/bcp/workshop/auth/LoginRequest.java), [AuthResource.java](../src/main/java/com/bcp/workshop/auth/AuthResource.java), [application.properties](../src/main/resources/application.properties), [AuthResourceTest.java](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java).
 
 **Cuenta del ejemplo:** en una base nueva, student solo se crea si AUTH_SEED_STUDENT_PASSWORD tiene un valor no blanco; para reproducir el ejemplo local usar el valor de laboratorio Workshop123!. trainer necesita AUTH_SEED_TRAINER_PASSWORD; su valor de laboratorio documentado es Trainer123!. No son campos de la API ni valores por defecto en Java. Las semillas no reemplazan cuentas existentes. Nunca usar estos valores como secretos de produccion.
 
@@ -57,19 +57,19 @@ AUTH_DB_URL selecciona SQLite; su defecto es `jdbc:sqlite:./data/workshop.db`. L
 
 | campo | tipo | descripcion |
 |---|---|---|
-| token | string JSON | Token legado Base64 del usuario autenticado. No es JWT ni esta firmado. Depende del instante de emision. |
-| expiresIn | integer JSON | Valor fijo actual: 3600 segundos. Duracion anunciada, no evidencia de rechazo efectivo por un consumidor tras ese plazo. |
+| token | string JSON | JWT firmado con HMAC-SHA256 (`HS256`), con claims `sub`, `client`, `iat` y `exp`. No expone el secreto de firma. |
+| expiresIn | integer JSON | Valor actual: 3600 segundos. `exp - iat` coincide con este valor; al observar la respuesta, `exp - now` puede diferir como maximo un segundo por redondeo. La aceptacion de expiracion por consumidores externos no esta verificada. |
 | user | object JSON | Identidad publica; no incluye id, password ni password_hash. |
 | user.username | string JSON | Username almacenado de la cuenta autenticada. |
 | user.displayName | string JSON | Nombre almacenado transformado con escape HTML4. `<b>QA & Test</b>` se devuelve como `&lt;b&gt;QA &amp; Test&lt;/b&gt;`. |
-| user.role | string JSON | Rol almacenado. Las semillas usan STUDENT y TRAINER; no hay enum que limite otros valores existentes. |
+| user.role | string JSON | Rol almacenado. Las semillas usan STUDENT y TRAINER; no hay enum que limite otros valores existentes. El rol no se incluye como claim JWT en este cambio. |
 | debug | string JSON | Valor fijo actual: `authenticated-with-legacy-flow`; sigue presente tras el refactor. |
 
 Ejemplo completo para la cuenta student de laboratorio:
 
 ```json
 {
-  "token": "c3R1ZGVudHxTVFVERU5UfDE3OTI0NDgxMzJ8V09SS1NIT1BfU0VDUkVUXzIwMjY=",
+  "token": "<JWT HS256 con claims sub, client, iat y exp>",
   "expiresIn": 3600,
   "user": {
     "username": "student",
@@ -80,9 +80,9 @@ Ejemplo completo para la cuenta student de laboratorio:
 }
 ```
 
-Token calculado con el algoritmo real para username student, role STUDENT y expiry 1792448132 (epoch en segundos). Es un ejemplo determinista, no un token recien emitido ni reutilizable. Su contenido decodificado sigue `username|role|expiry|SECRET`. El emisor calcula expiry como el instante de emision mas 3600 segundos.
+El valor de `token` es un marcador ilustrativo, no un JWT reutilizable. `sub` corresponde al username autenticado; `client` conserva el valor no blanco enviado por el cliente; `iat` y `exp` son epoch seconds, con `exp = iat + expiresIn`. El secreto se obtiene de la configuracion `AUTH_TOKEN_SECRET` y no forma parte del payload.
 
-Evidencia de campos y token: [LoginResponse.java:5](../src/main/java/com/bcp/workshop/auth/LoginResponse.java#L5), [LoginResponse.java:9](../src/main/java/com/bcp/workshop/auth/LoginResponse.java#L9), [LegacyTokenUtil.java:12](../src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java#L12). Las propiedades exactas y las semillas se comprueban en [AuthResourceTest.java:74](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java#L74) y [AuthResourceTest.java:156](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java#L156).
+Evidencia de respuesta y token: [LoginResponse.java](../src/main/java/com/bcp/workshop/auth/LoginResponse.java), [JwtTokenIssuer.java](../src/main/java/com/bcp/workshop/auth/JwtTokenIssuer.java), [AuthResourceTest.java](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java) y [JwtTokenIssuerTest.java](../src/test/java/com/bcp/workshop/auth/JwtTokenIssuerTest.java).
 
 ### 5. Respuestas de error
 
@@ -111,6 +111,14 @@ Esta rama esta probada por invocacion directa: no se ha confirmado que toda soli
 ```json
 {
   "message": "Password is required"
+}
+```
+
+**HTTP 400 Bad Request: client ausente, null, vacio o en blanco**, con username y password validos:
+
+```json
+{
+  "message": "Client is required"
 }
 ```
 
@@ -155,7 +163,7 @@ Evidencia: [AuthResource.java:38](../src/main/java/com/bcp/workshop/auth/AuthRes
 ### 6. Notas de seguridad
 
 - Username se consulta con PreparedStatement; password se verifica con PBKDF2WithHmacSHA256, 600000 iteraciones, salt aleatorio de 16 bytes y hash de 32 bytes. El cliente envia la contrasena, no un hash. Evidencia: [UserRepository.java:20](../src/main/java/com/bcp/workshop/auth/UserRepository.java#L20), [PasswordHasher.java:15](../src/main/java/com/bcp/workshop/auth/PasswordHasher.java#L15).
-- **El token sigue sin firma y revela el secreto de laboratorio al decodificarlo.** Contiene expiry, pero este backend no tiene un endpoint que verifique token o expiracion. No se puede afirmar que "expira de verdad" en los consumidores. Su compatibilidad y validacion siguen abiertas; no inferir Authorization Bearer para otros servicios. Evidencia: [LegacyTokenUtil.java:8](../src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java#L8), [LegacyTokenUtil.java:13](../src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java#L13).
+- El token de login esta firmado con HMAC-SHA256 y usa `AUTH_TOKEN_SECRET`, obligatorio y sin fallback. Este backend no expone endpoint de validacion; no se afirma que consumidores externos verifiquen firma o expiracion, ni se infiere `Authorization: Bearer` para otros servicios. Evidencia: [JwtTokenIssuer.java](../src/main/java/com/bcp/workshop/auth/JwtTokenIssuer.java), [application.properties](../src/main/resources/application.properties).
 - El 500 conserva detalles internos y el 401 refleja username. No registrar passwords/tokens ni insertar mensajes sin escape en HTML. El escape HTML4 de displayName es parte del valor de salida, no permiso para usar innerHTML.
 - CORS admite cualquier origen mediante `/.*/`; no es control de acceso ni garantia de envio de cookies. HTTP local no cifra credenciales. Este laboratorio debe permanecer aislado y no exponerse en Internet. Evidencia: [application.properties:4](../src/main/resources/application.properties#L4), [README.md:3](../README.md#L3).
 
@@ -225,7 +233,8 @@ Si el proceso no escucha o la conexion falla, no existe respuesta HTTP del backe
 - [pom.xml](../pom.xml) y [src/main/resources/application.properties](../src/main/resources/application.properties): Quarkus, extensiones, escucha, CORS, JSON, semillas y SQLite.
 - [AuthResource.java](../src/main/java/com/bcp/workshop/auth/AuthResource.java), [LoginRequest.java](../src/main/java/com/bcp/workshop/auth/LoginRequest.java) y [LoginResponse.java](../src/main/java/com/bcp/workshop/auth/LoginResponse.java): ruta, tipos, validaciones y respuestas.
 - [AuthenticationService.java](../src/main/java/com/bcp/workshop/auth/AuthenticationService.java), [UserRepository.java](../src/main/java/com/bcp/workshop/auth/UserRepository.java), [LegacyDatabase.java](../src/main/java/com/bcp/workshop/auth/LegacyDatabase.java) y [PasswordHasher.java](../src/main/java/com/bcp/workshop/auth/PasswordHasher.java): autenticacion, almacenamiento, migracion y hashing.
-- [LegacyTokenUtil.java](../src/main/java/com/bcp/workshop/auth/LegacyTokenUtil.java): formato real y limites del token.
+- [JwtTokenIssuer.java](../src/main/java/com/bcp/workshop/auth/JwtTokenIssuer.java): claims, firma y expiracion emitidos.
+- [JwtTokenIssuerTest.java](../src/test/java/com/bcp/workshop/auth/JwtTokenIssuerTest.java): relacion temporal determinista entre `iat`, `exp` y `expiresIn`.
 - [AuthResourceTest.java](../src/test/java/com/bcp/workshop/auth/AuthResourceTest.java): fixtures y expectativas de exito, validacion, credenciales y excepciones.
 
-Solo se modifica documentacion. Se omitieron el arranque temporal y la inspeccion local de dependencias; la consulta externa tampoco produjo contenido verificable. Salud y errores de framework permanecen como preguntas abiertas, no como comprobaciones aprobadas.
+Este contrato se actualizo para reflejar el JWT firmado y la validacion requerida de `client`. La comprobacion de expiracion por consumidores externos y la respuesta de errores previos al resource permanecen sin verificar; no se presentan como comportamiento garantizado.

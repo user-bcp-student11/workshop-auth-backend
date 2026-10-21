@@ -8,6 +8,7 @@
 #### Scenario: Login valido devuelve token firmado con claims minimos
 - **GIVEN** un usuario con credenciales validas
 - **AND** una solicitud JSON valida para `POST /auth/login`
+- **AND** `client` es un string no blanco
 - **WHEN** el servicio autentica correctamente
 - **THEN** responde `200 OK`
 - **AND** la respuesta incluye `token`, `expiresIn` y `user`
@@ -16,7 +17,7 @@
 - **AND** `client` corresponde al `client` de la solicitud validada
 
 ### Requirement: client deja de ser ignorado y tiene validacion de contrato
-El campo `client` del request para `POST /auth/login` MUST dejar de ser ignorado. El contrato MUST definir cuando se acepta y cuando se rechaza para evitar emisiones ambiguas.
+El request de `POST /auth/login` MUST incluir `client` como string no blanco. El sistema MUST rechazar su ausencia, null, valor vacio o solo espacios con error 400; para un valor aceptado, el claim MUST preservar el valor recibido.
 
 #### Scenario: client valido se refleja en el token
 - **GIVEN** credenciales validas
@@ -25,18 +26,19 @@ El campo `client` del request para `POST /auth/login` MUST dejar de ser ignorado
 - **THEN** el claim `client` del token emitido coincide con el `client` recibido
 
 #### Scenario: client invalido se rechaza como error de validacion
-- **GIVEN** una solicitud con `client` ausente o invalido segun el contrato definido
+- **GIVEN** una solicitud con `client` ausente, null, vacio o formado solo por espacios
 - **WHEN** se procesa `POST /auth/login`
 - **THEN** el endpoint responde con error de validacion de entrada (familia 400)
 - **AND** no emite token
 
 ### Requirement: Coherencia verificable entre expiresIn y exp
-Para compatibilidad con el contrato actual, la respuesta MUST conservar `expiresIn`; ademas, `expiresIn` MUST ser coherente con `exp - now` dentro de una tolerancia documentada.
+Para compatibilidad con el contrato actual, la respuesta MUST conservar `expiresIn`. `iat` y `exp` MUST ser epoch seconds, `exp - iat` MUST igualar `expiresIn`, y al observar la respuesta `exp - now` MUST diferir de `expiresIn` como maximo un segundo por redondeo.
 
 #### Scenario: expiresIn consistente con exp dentro de tolerancia
 - **GIVEN** un login exitoso
 - **WHEN** se evalua el `exp` del token y el instante de emision observable
-- **THEN** la diferencia `exp - now` coincide con `expiresIn` dentro de la tolerancia documentada
+- **THEN** `exp - iat` coincide exactamente con `expiresIn`
+- **AND** `exp - now` difiere de `expiresIn` como maximo un segundo
 
 ### Requirement: Se preservan rutas y estados base no cambiados por HU-01
 El cambio MUST mantener coherencia con el baseline de `docs/ENDPOINTS.md` para `POST /auth/login`, excepto en los puntos explicitamente modificados por esta HU (semantica de token y uso de `client`).

@@ -29,7 +29,10 @@ public class AuthResource {
             if (request.password == null || request.password.trim().isEmpty()) {
                 return Response.status(Response.Status.BAD_REQUEST).entity(Map.of("message", "Password is required")).build();
             }
-            var authenticated = authentication.authenticate(request.username, request.password);
+            if (request.client == null || request.client.trim().isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST).entity(Map.of("message", "Client is required")).build();
+            }
+            var authenticated = authentication.authenticate(request.username, request.password, request.client);
             if (authenticated == null) {
                 return Response.status(Response.Status.UNAUTHORIZED)
                         .entity(Map.of("message", "Invalid user " + request.username + " or password")).build();

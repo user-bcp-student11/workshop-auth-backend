@@ -27,11 +27,11 @@ class AuthResourceErrorTest {
     @ApplicationScoped
     public static class FailingAuthenticationService extends AuthenticationService {
         public FailingAuthenticationService() {
-            super(null);
+            super(null, null, null);
         }
 
         @Override
-        public AuthenticatedUser authenticate(String username, String password) {
+        public AuthenticatedUser authenticate(String username, String password, String client) {
             throw new IllegalStateException("without-message".equals(username) ? null : "Controlled QA failure");
         }
     }
@@ -48,7 +48,7 @@ class AuthResourceErrorTest {
 
     private void assertServerError(String username, String expectedMessage) {
         Map<String, Object> body = given().contentType("application/json").accept("application/json")
-                .body(Map.of("username", username, "password", "QA-only-fixture"))
+            .body(Map.of("username", username, "password", "QA-only-fixture", "client", "test-client"))
                 .when().post("/auth/login").then().statusCode(500).contentType("application/json")
                 .extract().jsonPath().getMap("");
         assertEquals(Map.of("message", expectedMessage, "exception", IllegalStateException.class.getName()), body);
